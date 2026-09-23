@@ -1,0 +1,58 @@
+name: terraform
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  id-token: write   # needed only for the optional plan job (OIDC to AWS)
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dir: [bootstrap, envs/dev]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - name: Format check
+        run: terraform fmt -check -recursive
+      - name: Init (no backend)
+        working-directory: ${{ matrix.dir }}
+        run: terraform init -backend=false -input=false
+      - name: Validate
+        working-directory: ${{ matrix.dir }}
+        run: terraform validate
+
+  # Runs only after you add an AWS IAM role for GitHub OIDC and save its ARN
+  # as the repository secret AWS_PLAN_ROLE_ARN (see README, "CI plan with OIDC").
+  plan:
+    needs: validate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      HAS_ROLE: ${{ secrets.AWS_PLAN_ROLE_ARN != '' }}
+    defaults:
+      run:
+        working-directory: envs/dev
+    steps:
+      - uses: actions/checkout@v4
+        if: env.HAS_ROLE == 'true'
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: env.HAS_ROLE == 'true'
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: ap-south-1
+      - uses: hashicorp/setup-terraform@v3
+        if: env.HAS_ROLE == 'true'
+        with:
+          terraform_version: 1.9.8
+      - name: Plan
+        if: env.HAS_ROLE == 'true'
+        run: |
+          terraform init -input=false
+          terraform plan -input=false -no-color
