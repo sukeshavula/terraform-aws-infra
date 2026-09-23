@@ -56,7 +56,7 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# Single NAT gateway by default to keep lab cost low; set nat_per_az = true for prod-style HA.
+# Single NAT gateway by default to keep dev cost low; set nat_per_az = true for prod-style HA.
 resource "aws_eip" "nat" {
   count  = var.nat_per_az ? var.az_count : 1
   domain = "vpc"
